@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -36,6 +37,19 @@ class DriverRepository:
 
     def list_by_status(self, status: DriverStatus) -> list[Driver]:
         stmt = select(Driver).where(Driver.status == status)
+        return list(self.db.scalars(stmt))
+
+    def list_available_in_cells(self, cells: Iterable[str]) -> list[Driver]:
+        """Candidate-discovery query for Slice 2's matching: available drivers
+        whose h3_index falls in one of the given cells. `cells` is normally a
+        single H3 ring's worth of cell addresses (see matching/candidate_search.py),
+        so this stays a cheap indexed IN-query, never a full table scan."""
+        cells = list(cells)
+        if not cells:
+            return []
+        stmt = select(Driver).where(
+            Driver.status == DriverStatus.AVAILABLE, Driver.h3_index.in_(cells)
+        )
         return list(self.db.scalars(stmt))
 
     def update_location(

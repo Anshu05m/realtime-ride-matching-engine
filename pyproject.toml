@@ -12,6 +12,7 @@ dependencies = [
     "redis>=5.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "h3>=4.1",
 ]
 
 [project.optional-dependencies]
