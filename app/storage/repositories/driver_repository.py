@@ -32,7 +32,16 @@ class DriverRepository:
         self.db.flush()
         return driver
 
-    def get_by_id(self, driver_id: uuid.UUID) -> Driver | None:
+    def get_by_id(self, driver_id: uuid.UUID, *, fresh: bool = False) -> Driver | None:
+        """By default, Session.get() returns a cached object from this session's
+        identity map if one is already loaded for this id -- no new SELECT is
+        issued, even if another session has since committed a change to that
+        row. That's normally a reasonable/fast default, but it's wrong for a
+        lock-protected re-check (see app/matching/matcher.py), where the whole
+        point is to see the row's true current state. Pass fresh=True there to
+        force a real SELECT via populate_existing, bypassing the cache."""
+        if fresh:
+            return self.db.get(Driver, driver_id, populate_existing=True)
         return self.db.get(Driver, driver_id)
 
     def list_by_status(self, status: DriverStatus) -> list[Driver]:

@@ -23,5 +23,11 @@ class Settings(BaseSettings):
     match_target_candidates: int = 5
     match_max_ring: int = 3
 
+    # Slice 3: TTL for the Redis distributed lock held around a single driver's
+    # assignment critical section. Long enough to cover a normal DB round-trip,
+    # short enough that a crashed worker's lock clears in a reasonable time. See
+    # app/redis/lock.py and INTERVIEW_PREP.md for the tradeoff this represents.
+    lock_ttl_ms: int = 5000
+
 
 settings = Settings()
