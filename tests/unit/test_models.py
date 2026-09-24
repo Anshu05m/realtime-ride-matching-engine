@@ -53,6 +53,7 @@ def test_ride_columns_match_spec():
         "zone_id",
         "created_at",
         "updated_at",
+        "idempotency_key",
     }
 
 
