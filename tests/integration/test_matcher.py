@@ -37,8 +37,10 @@ def test_match_ride_assigns_nearest_available_driver(db_session):
     far_lat, far_lng, far_cell = _cell_center(ring=2)
 
     driver_repo = DriverRepository(db_session)
-    near = driver_repo.create(current_lat=near_lat, current_lng=near_lng, h3_index=near_cell)
-    driver_repo.create(current_lat=far_lat, current_lng=far_lng, h3_index=far_cell)
+    near = driver_repo.create(
+        current_lat=near_lat, current_lng=near_lng, h3_index=near_cell, zone_id="zone-a"
+    )
+    driver_repo.create(current_lat=far_lat, current_lng=far_lng, h3_index=far_cell, zone_id="zone-a")
 
     ride = _requested_ride(db_session)
     matched = match_ride(db_session, ride)
@@ -55,9 +57,15 @@ def test_match_ride_skips_busy_drivers(db_session):
 
     driver_repo = DriverRepository(db_session)
     driver_repo.create(
-        current_lat=near_lat, current_lng=near_lng, h3_index=near_cell, status=DriverStatus.BUSY
+        current_lat=near_lat,
+        current_lng=near_lng,
+        h3_index=near_cell,
+        zone_id="zone-a",
+        status=DriverStatus.BUSY,
     )
-    available = driver_repo.create(current_lat=far_lat, current_lng=far_lng, h3_index=far_cell)
+    available = driver_repo.create(
+        current_lat=far_lat, current_lng=far_lng, h3_index=far_cell, zone_id="zone-a"
+    )
 
     ride = _requested_ride(db_session)
     matched = match_ride(db_session, ride)
@@ -104,9 +112,11 @@ def test_match_ride_falls_through_when_top_candidate_goes_busy_before_assignment
 
     driver_repo = DriverRepository(db_session)
     top_candidate = driver_repo.create(
-        current_lat=near_lat, current_lng=near_lng, h3_index=near_cell
+        current_lat=near_lat, current_lng=near_lng, h3_index=near_cell, zone_id="zone-a"
     )
-    fallback = driver_repo.create(current_lat=far_lat, current_lng=far_lng, h3_index=far_cell)
+    fallback = driver_repo.create(
+        current_lat=far_lat, current_lng=far_lng, h3_index=far_cell, zone_id="zone-a"
+    )
 
     ride = _requested_ride(db_session)
 

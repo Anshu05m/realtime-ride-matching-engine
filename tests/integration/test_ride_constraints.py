@@ -15,7 +15,9 @@ from app.storage.repositories.rider_repository import RiderRepository
 
 
 def test_two_active_rides_for_the_same_driver_violates_the_constraint(db_session):
-    driver = DriverRepository(db_session).create(current_lat=1.0, current_lng=1.0, h3_index="a")
+    driver = DriverRepository(db_session).create(
+        current_lat=1.0, current_lng=1.0, h3_index="a", zone_id="zone-a"
+    )
     rider_repo = RiderRepository(db_session)
     ride_repo = RideRepository(db_session)
 
@@ -41,7 +43,9 @@ def test_two_active_rides_for_the_same_driver_violates_the_constraint(db_session
 
 
 def test_a_second_active_ride_is_allowed_once_the_first_completes(db_session):
-    driver = DriverRepository(db_session).create(current_lat=1.0, current_lng=1.0, h3_index="a")
+    driver = DriverRepository(db_session).create(
+        current_lat=1.0, current_lng=1.0, h3_index="a", zone_id="zone-a"
+    )
     rider_repo = RiderRepository(db_session)
     ride_repo = RideRepository(db_session)
 
@@ -64,8 +68,8 @@ def test_a_second_active_ride_is_allowed_once_the_first_completes(db_session):
 
 def test_two_different_drivers_can_each_have_an_active_ride(db_session):
     driver_repo = DriverRepository(db_session)
-    driver_a = driver_repo.create(current_lat=1.0, current_lng=1.0, h3_index="a")
-    driver_b = driver_repo.create(current_lat=2.0, current_lng=2.0, h3_index="b")
+    driver_a = driver_repo.create(current_lat=1.0, current_lng=1.0, h3_index="a", zone_id="zone-a")
+    driver_b = driver_repo.create(current_lat=2.0, current_lng=2.0, h3_index="b", zone_id="zone-b")
     rider_repo = RiderRepository(db_session)
     ride_repo = RideRepository(db_session)
 

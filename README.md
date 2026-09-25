@@ -57,7 +57,7 @@ automatically the first time the postgres container starts.
 - [x] **Slice 2 — Geospatial matching**
 - [x] **Slice 3 — Concurrency safety**
 - [x] **Slice 4 — Idempotency**
-- [ ] Slice 5 — Surge pricing
+- [x] **Slice 5 — Surge pricing**
 - [ ] Slice 6 — FastAPI layer
 - [ ] Slice 7 — Simulation engine
 - [ ] Slice 8 — Dashboard

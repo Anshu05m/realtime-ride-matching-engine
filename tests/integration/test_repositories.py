@@ -13,7 +13,12 @@ from app.storage.repositories.rider_repository import RiderRepository
 def test_create_and_get_driver(db_session):
     repo = DriverRepository(db_session)
 
-    created = repo.create(current_lat=37.7749, current_lng=-122.4194, h3_index="8928308280fffff")
+    created = repo.create(
+        current_lat=37.7749,
+        current_lng=-122.4194,
+        h3_index="8928308280fffff",
+        zone_id="862830827ffffff",
+    )
 
     fetched = repo.get_by_id(created.id)
     assert fetched is not None
@@ -24,19 +29,26 @@ def test_create_and_get_driver(db_session):
 
 def test_update_driver_location(db_session):
     repo = DriverRepository(db_session)
-    driver = repo.create(current_lat=0.0, current_lng=0.0, h3_index="8928308280fffff")
+    driver = repo.create(
+        current_lat=0.0, current_lng=0.0, h3_index="8928308280fffff", zone_id="zone-a"
+    )
 
-    updated = repo.update_location(driver.id, lat=1.0, lng=2.0, h3_index="8928308281fffff")
+    updated = repo.update_location(
+        driver.id, lat=1.0, lng=2.0, h3_index="8928308281fffff", zone_id="zone-b"
+    )
 
     assert updated is not None
     assert updated.current_lat == 1.0
     assert updated.current_lng == 2.0
     assert updated.h3_index == "8928308281fffff"
+    assert updated.zone_id == "zone-b"
 
 
 def test_update_driver_status(db_session):
     repo = DriverRepository(db_session)
-    driver = repo.create(current_lat=0.0, current_lng=0.0, h3_index="8928308280fffff")
+    driver = repo.create(
+        current_lat=0.0, current_lng=0.0, h3_index="8928308280fffff", zone_id="zone-a"
+    )
 
     updated = repo.update_status(driver.id, status=DriverStatus.BUSY)
 
@@ -46,8 +58,10 @@ def test_update_driver_status(db_session):
 
 def test_list_drivers_by_status(db_session):
     repo = DriverRepository(db_session)
-    available = repo.create(current_lat=0.0, current_lng=0.0, h3_index="a")
-    busy = repo.create(current_lat=0.0, current_lng=0.0, h3_index="b", status=DriverStatus.BUSY)
+    available = repo.create(current_lat=0.0, current_lng=0.0, h3_index="a", zone_id="zone-a")
+    busy = repo.create(
+        current_lat=0.0, current_lng=0.0, h3_index="b", zone_id="zone-a", status=DriverStatus.BUSY
+    )
 
     available_drivers = repo.list_by_status(DriverStatus.AVAILABLE)
     busy_drivers = repo.list_by_status(DriverStatus.BUSY)
@@ -87,7 +101,9 @@ def test_create_ride_defaults_to_requested_and_no_driver(db_session):
 
 def test_list_active_rides_for_driver(db_session):
     rider = RiderRepository(db_session).create(pickup_lat=1.0, pickup_lng=1.0)
-    driver = DriverRepository(db_session).create(current_lat=1.0, current_lng=1.0, h3_index="a")
+    driver = DriverRepository(db_session).create(
+        current_lat=1.0, current_lng=1.0, h3_index="a", zone_id="zone-a"
+    )
     ride_repo = RideRepository(db_session)
 
     ride = ride_repo.create(rider_id=rider.id, pickup_lat=1.0, pickup_lng=1.0)

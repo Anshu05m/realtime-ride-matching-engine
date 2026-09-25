@@ -28,6 +28,12 @@ class Driver(Base):
     # scanning every driver row.
     h3_index: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
 
+    # H3 cell at Slice 5's coarser surge-pricing resolution -- a separate,
+    # independently-computed value from h3_index, not derived from it (see
+    # app/pricing/zones.py). Indexed so DriverRepository.count_available_in_zone
+    # stays a cheap equality lookup, same reasoning as h3_index's index.
+    zone_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+
     status: Mapped[DriverStatus] = mapped_column(
         Enum(
             DriverStatus,

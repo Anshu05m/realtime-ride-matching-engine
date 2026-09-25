@@ -29,5 +29,25 @@ class Settings(BaseSettings):
     # app/redis/lock.py and INTERVIEW_PREP.md for the tradeoff this represents.
     lock_ttl_ms: int = 5000
 
+    # Slice 5: H3 resolution for surge-pricing zones -- deliberately coarser
+    # than h3_resolution (matching), and NOT derived from it. Matching's cells
+    # are fine-grained on purpose (small candidate sets); reusing that
+    # resolution for pricing would make surge flicker to near-max whenever a
+    # single driver crosses a tiny cell boundary. Resolution 6 is ~49x the
+    # area of resolution 8 (H3 gets ~7x coarser per level), giving each zone a
+    # more stable pool of drivers/requests to aggregate over.
+    surge_zone_resolution: int = 6
+
+    # How far back (in seconds) to count "recent" ride requests as demand for
+    # a zone. A rolling window, not an all-time count -- old demand shouldn't
+    # keep inflating surge forever.
+    surge_demand_window_seconds: int = 300
+
+    # Surge formula: multiplier = clamp(1.0 + surge_sensitivity * ratio, 1.0,
+    # surge_max_multiplier), where ratio = demand / max(supply, 1). Continuous
+    # and capped rather than a step table -- see INTERVIEW_PREP.md for why.
+    surge_sensitivity: float = 0.5
+    surge_max_multiplier: float = 3.0
+
 
 settings = Settings()

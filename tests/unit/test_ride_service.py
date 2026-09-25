@@ -11,10 +11,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.models.ride import Ride, RideStatus
+from app.pricing.surge import SurgeResult
 from app.services.ride_service import IdempotencyKeyConflictError, create_ride
 
 RIDER_ID = uuid.uuid4()
 LAT, LNG = 37.7749, -122.4194
+
+# create_ride calls the real (DB-free) zone_id_for_point but the real
+# zone_surge would hit the database through its own repository instances --
+# not the RideRepository patched below, since pricing/surge.py imports its
+# own. Patch it directly wherever create_ride actually reaches it (i.e. on
+# every path that isn't short-circuited by an idempotency-key hit/conflict).
+_FAKE_SURGE = SurgeResult(zone_id="fake-zone", demand=0, supply=1, multiplier=1.0)
 
 
 def _fake_ride(**overrides) -> Ride:
@@ -29,8 +37,9 @@ def _fake_ride(**overrides) -> Ride:
     return Ride(**defaults)
 
 
+@patch("app.services.ride_service.zone_surge", return_value=_FAKE_SURGE)
 @patch("app.services.ride_service.RideRepository")
-def test_no_key_creates_without_checking_or_committing(mock_repo_cls):
+def test_no_key_creates_without_checking_or_committing(mock_repo_cls, mock_zone_surge):
     mock_repo = mock_repo_cls.return_value
     mock_repo.create.return_value = _fake_ride()
     db = MagicMock()
@@ -42,8 +51,9 @@ def test_no_key_creates_without_checking_or_committing(mock_repo_cls):
     db.commit.assert_not_called()
 
 
+@patch("app.services.ride_service.zone_surge", return_value=_FAKE_SURGE)
 @patch("app.services.ride_service.RideRepository")
-def test_unseen_key_creates_and_commits(mock_repo_cls):
+def test_unseen_key_creates_and_commits(mock_repo_cls, mock_zone_surge):
     mock_repo = mock_repo_cls.return_value
     mock_repo.get_by_idempotency_key.return_value = None
     mock_repo.create.return_value = _fake_ride()
@@ -100,8 +110,9 @@ def test_mismatched_rider_id_also_raises(mock_repo_cls):
         )
 
 
+@patch("app.services.ride_service.zone_surge", return_value=_FAKE_SURGE)
 @patch("app.services.ride_service.RideRepository")
-def test_integrity_error_on_commit_rolls_back_and_returns_the_winner(mock_repo_cls):
+def test_integrity_error_on_commit_rolls_back_and_returns_the_winner(mock_repo_cls, mock_zone_surge):
     from sqlalchemy.exc import IntegrityError
 
     mock_repo = mock_repo_cls.return_value

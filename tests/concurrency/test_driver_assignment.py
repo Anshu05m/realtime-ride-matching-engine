@@ -20,10 +20,13 @@ from app.storage.repositories.rider_repository import RiderRepository
 
 LAT, LNG = 37.7749, -122.4194
 H3_INDEX = latlng_to_h3(LAT, LNG, settings.h3_resolution)
+ZONE_ID = "zone-a"
 
 
 def _make_driver(session):
-    return DriverRepository(session).create(current_lat=LAT, current_lng=LNG, h3_index=H3_INDEX)
+    return DriverRepository(session).create(
+        current_lat=LAT, current_lng=LNG, h3_index=H3_INDEX, zone_id=ZONE_ID
+    )
 
 
 def _make_requested_ride(session):

@@ -1,4 +1,4 @@
-"""Idempotent ride creation (Slice 4).
+"""Idempotent, surge-priced ride creation (Slices 4-5).
 
 Clients retry requests when they can't tell whether the original one
 succeeded (dropped connection, timeout, crash before reading the response).
@@ -29,6 +29,15 @@ the loser would stay blocked on whatever unrelated work that caller does
 before it gets around to committing, and a caller that forgets to commit
 would leave an "idempotent" ride silently non-durable. Owning the commit is
 what deterministically unblocks a concurrent racer on the same key.
+
+Slice 5 note: create_ride also quotes the ride's zone and surge multiplier
+at request time, computed BEFORE the new Ride row is written -- under READ
+COMMITTED a transaction sees its own uncommitted writes, so computing after
+the insert would let a ride count itself in its own demand snapshot. Surge
+is quoted here rather than later at match time because matching is a
+separate, optional step (a ride can stay REQUESTED forever if
+NoAvailableDriverError is raised) -- quoting only on a successful match
+would leave every unmatched ride with no zone/price at all.
 """
 
 import uuid
@@ -36,7 +45,10 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.ride import Ride
+from app.pricing.surge import zone_surge
+from app.pricing.zones import zone_id_for_point
 from app.storage.repositories.ride_repository import RideRepository
 
 
@@ -82,11 +94,21 @@ def create_ride(
             # returns that ride as it is now.
             return existing
 
+    # Quote zone + surge now, before any Ride row is written -- computing
+    # after the insert would let this ride count itself in its own demand
+    # snapshot (READ COMMITTED sees a transaction's own uncommitted writes).
+    zone_id = zone_id_for_point(pickup_lat, pickup_lng, settings.surge_zone_resolution)
+    surge = zone_surge(db, zone_id)
+
     if idempotency_key is None:
         # No dedup requested -- nothing to race on, no need to own the commit
         # boundary here. Caller decides when to commit, same as Slice 1/2.
         return ride_repo.create(
-            rider_id=rider_id, pickup_lat=pickup_lat, pickup_lng=pickup_lng
+            rider_id=rider_id,
+            pickup_lat=pickup_lat,
+            pickup_lng=pickup_lng,
+            zone_id=zone_id,
+            surge_multiplier=surge.multiplier,
         )
 
     try:
@@ -101,6 +123,8 @@ def create_ride(
             pickup_lat=pickup_lat,
             pickup_lng=pickup_lng,
             idempotency_key=idempotency_key,
+            zone_id=zone_id,
+            surge_multiplier=surge.multiplier,
         )
         db.commit()
     except IntegrityError:

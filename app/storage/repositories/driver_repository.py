@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.driver import Driver, DriverStatus
@@ -20,12 +20,14 @@ class DriverRepository:
         current_lat: float,
         current_lng: float,
         h3_index: str,
+        zone_id: str,
         status: DriverStatus = DriverStatus.AVAILABLE,
     ) -> Driver:
         driver = Driver(
             current_lat=current_lat,
             current_lng=current_lng,
             h3_index=h3_index,
+            zone_id=zone_id,
             status=status,
         )
         self.db.add(driver)
@@ -62,7 +64,7 @@ class DriverRepository:
         return list(self.db.scalars(stmt))
 
     def update_location(
-        self, driver_id: uuid.UUID, *, lat: float, lng: float, h3_index: str
+        self, driver_id: uuid.UUID, *, lat: float, lng: float, h3_index: str, zone_id: str
     ) -> Driver | None:
         driver = self.get_by_id(driver_id)
         if driver is None:
@@ -70,8 +72,17 @@ class DriverRepository:
         driver.current_lat = lat
         driver.current_lng = lng
         driver.h3_index = h3_index
+        driver.zone_id = zone_id
         self.db.flush()
         return driver
+
+    def count_available_in_zone(self, zone_id: str) -> int:
+        """Live, unwindowed supply count for Slice 5's surge formula --
+        availability is inherently a right-now state, no time dimension."""
+        stmt = select(func.count()).select_from(Driver).where(
+            Driver.status == DriverStatus.AVAILABLE, Driver.zone_id == zone_id
+        )
+        return self.db.scalar(stmt) or 0
 
     def update_status(self, driver_id: uuid.UUID, *, status: DriverStatus) -> Driver | None:
         driver = self.get_by_id(driver_id)

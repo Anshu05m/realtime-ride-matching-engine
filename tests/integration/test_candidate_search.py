@@ -29,7 +29,9 @@ def test_finds_driver_only_present_at_a_farther_ring(db_session):
     # Nothing at ring 0/1 -- the driver only shows up once expansion reaches ring 2,
     # so this actually exercises the expansion loop rather than trivially passing.
     lat, lng, cell = _cell_center(ring=2)
-    driver = DriverRepository(db_session).create(current_lat=lat, current_lng=lng, h3_index=cell)
+    driver = DriverRepository(db_session).create(
+        current_lat=lat, current_lng=lng, h3_index=cell, zone_id="zone-a"
+    )
 
     ranked = find_ranked_candidates(
         db_session, RIDER_LAT, RIDER_LNG, target_candidates=1, max_ring=3
@@ -49,7 +51,7 @@ def test_busy_driver_in_near_cell_is_excluded(db_session):
     # Proves the AVAILABLE filter, not just the H3 cell filter.
     lat, lng, cell = _cell_center(ring=0)
     DriverRepository(db_session).create(
-        current_lat=lat, current_lng=lng, h3_index=cell, status=DriverStatus.BUSY
+        current_lat=lat, current_lng=lng, h3_index=cell, zone_id="zone-a", status=DriverStatus.BUSY
     )
 
     ranked = find_ranked_candidates(
@@ -63,7 +65,9 @@ def test_no_duplicate_drivers_across_ring_iterations(db_session):
     # Regression test for cells_within_ring's disk-diffing: if new cells overlapped
     # already-seen cells, this driver would be counted (and returned) more than once.
     lat, lng, cell = _cell_center(ring=0)
-    driver = DriverRepository(db_session).create(current_lat=lat, current_lng=lng, h3_index=cell)
+    driver = DriverRepository(db_session).create(
+        current_lat=lat, current_lng=lng, h3_index=cell, zone_id="zone-a"
+    )
 
     ranked = find_ranked_candidates(
         db_session, RIDER_LAT, RIDER_LNG, target_candidates=5, max_ring=3
@@ -76,7 +80,9 @@ def test_no_duplicate_drivers_across_ring_iterations(db_session):
 def test_stops_expanding_once_target_candidate_count_reached(db_session):
     driver_repo = DriverRepository(db_session)
     ring0_lat, ring0_lng, ring0_cell = _cell_center(ring=0)
-    driver_repo.create(current_lat=ring0_lat, current_lng=ring0_lng, h3_index=ring0_cell)
+    driver_repo.create(
+        current_lat=ring0_lat, current_lng=ring0_lng, h3_index=ring0_cell, zone_id="zone-a"
+    )
 
     ranked = find_ranked_candidates(
         db_session, RIDER_LAT, RIDER_LNG, target_candidates=1, max_ring=3

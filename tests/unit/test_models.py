@@ -28,6 +28,7 @@ def test_driver_columns_match_spec():
         "current_lat",
         "current_lng",
         "h3_index",
+        "zone_id",
         "status",
         "last_updated_at",
     }
