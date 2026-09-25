@@ -28,6 +28,24 @@ class RideStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class RideNotFoundError(Exception):
+    """Raised when an operation is attempted against a ride id that doesn't
+    exist. Lives here (not in ride_service.py/matcher.py individually) since
+    both already depend on this module for RideStatus/Ride."""
+
+
+class InvalidRideStateError(Exception):
+    """Raised when a ride's status doesn't allow the requested transition --
+    either because it was never valid (e.g. completing a REQUESTED ride) or
+    because a concurrent operation changed it first (e.g. match_ride losing
+    a race to a concurrent cancel_ride). Shared by match_ride, cancel_ride,
+    and complete_ride: all three now go through RideRepository.
+    transition_status's atomic conditional UPDATE, and this is the single
+    signal for "that conditional UPDATE affected zero rows." See
+    INTERVIEW_PREP.md's Slice 6 section for the concurrency design this is
+    part of."""
+
+
 class Ride(Base):
     __tablename__ = "rides"
 

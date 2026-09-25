@@ -9,7 +9,8 @@ from app.config import settings
 from app.matching.geo import cells_within_ring, latlng_to_h3
 from app.matching.matcher import NoAvailableDriverError, match_ride
 from app.models.driver import DriverStatus
-from app.models.ride import RideStatus
+from app.models.ride import InvalidRideStateError, RideStatus
+from app.services.ride_service import cancel_ride
 from app.storage.repositories.driver_repository import DriverRepository
 from app.storage.repositories.ride_repository import RideRepository
 from app.storage.repositories.rider_repository import RiderRepository
@@ -134,3 +135,44 @@ def test_match_ride_falls_through_when_top_candidate_goes_busy_before_assignment
     matched = match_ride(db_session, ride)
 
     assert matched.driver_id == fallback.id
+
+
+def test_match_ride_does_not_overwrite_a_concurrently_cancelled_ride(db_session, monkeypatch):
+    """The ride-side counterpart to the driver-steal test above -- and the
+    specific race the user asked to have verified before approving Slice 6's
+    design: if the ride itself is cancelled (by a concurrent cancel_ride) in
+    the gap between candidate discovery and match_ride's own conditional
+    UPDATE, match_ride must not silently overwrite that cancellation back to
+    MATCHED. See the module docstring's point 4 and INTERVIEW_PREP.md's
+    Slice 6 section for the full writeup."""
+    near_lat, near_lng, near_cell = _cell_center(ring=0)
+
+    driver_repo = DriverRepository(db_session)
+    candidate = driver_repo.create(
+        current_lat=near_lat, current_lng=near_lng, h3_index=near_cell, zone_id="zone-a"
+    )
+
+    ride = _requested_ride(db_session)
+
+    import app.matching.matcher as matcher_module
+
+    original_find = matcher_module.find_ranked_candidates
+
+    def find_then_cancel_the_ride(db, rider_lat, rider_lng, **kwargs):
+        ranked = original_find(db, rider_lat, rider_lng, **kwargs)
+        cancel_ride(db, ride.id)
+        return ranked
+
+    monkeypatch.setattr(matcher_module, "find_ranked_candidates", find_then_cancel_the_ride)
+
+    try:
+        match_ride(db_session, ride)
+        raised = False
+    except InvalidRideStateError:
+        raised = True
+
+    assert raised
+
+    db_session.refresh(ride)
+    assert ride.status == RideStatus.CANCELLED  # not silently overwritten to MATCHED
+    assert driver_repo.get_by_id(candidate.id, fresh=True).status == DriverStatus.AVAILABLE

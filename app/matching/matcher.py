@@ -27,6 +27,17 @@ double-booking the same driver:
    skipped), the commit below fails with IntegrityError and is treated like
    any other lost race: roll back, release the lock, try the next candidate.
 
+4. (Slice 6) The ride's own status transition (REQUESTED -> MATCHED) is
+   itself an atomic conditional UPDATE (`RideRepository.transition_status`),
+   not a blind ORM mutation -- the same mechanism cancel_ride/complete_ride
+   use. Without this, a ride cancelled by a concurrent request in the gap
+   between this function's initial REQUESTED check and its eventual commit
+   would get silently overwritten back to MATCHED (a real bug found and
+   fixed in Slice 6 -- see INTERVIEW_PREP.md). The Redis lock above protects
+   the *driver* row; this protects the *ride* row; they compose without
+   either mechanism knowing about the other, via ordinary Postgres row
+   locking.
+
 What this does NOT guarantee: if a worker dies while holding the lock but
 before committing, nothing here automatically retries the stranded
 REQUESTED ride once the lock's TTL expires — see INTERVIEW_PREP.md for the
@@ -44,9 +55,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.matching.candidate_search import find_ranked_candidates
 from app.models.driver import DriverStatus
-from app.models.ride import Ride, RideStatus
+from app.models.ride import InvalidRideStateError, Ride, RideStatus
 from app.redis.lock import acquire_lock, release_lock
 from app.storage.repositories.driver_repository import DriverRepository
+from app.storage.repositories.ride_repository import RideRepository
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +85,7 @@ def match_ride(db: Session, ride: Ride) -> Ride:
     # no benefit; CLAUDE.md's flow explicitly ranks before locking).
     ranked = find_ranked_candidates(db, ride.pickup_lat, ride.pickup_lng)
     driver_repo = DriverRepository(db)
+    ride_repo = RideRepository(db)
 
     for candidate, _distance_km in ranked:
         lock_key = _lock_key(candidate.id)
@@ -96,9 +109,31 @@ def match_ride(db: Session, ride: Ride) -> Ride:
                 continue
 
             driver.status = DriverStatus.BUSY
-            ride.driver_id = driver.id
-            ride.status = RideStatus.MATCHED
-            ride.matched_at = datetime.now(UTC)
+
+            # Atomic, conditional: only actually transitions if the ride is
+            # STILL REQUESTED at this exact moment -- guards against a
+            # concurrent cancel_ride/complete_ride (or, in principle, another
+            # match_ride) changing it in the gap between the top-of-function
+            # check and here. See module docstring point 4.
+            transitioned = ride_repo.transition_status(
+                ride.id,
+                from_statuses=[RideStatus.REQUESTED],
+                to_status=RideStatus.MATCHED,
+                driver_id=driver.id,
+                matched_at=datetime.now(UTC),
+            )
+            if not transitioned:
+                # The ride itself is gone (cancelled/completed concurrently) --
+                # no candidate driver can fix that, so stop immediately rather
+                # than trying the next one. Rolling back also discards the
+                # driver's now-moot BUSY mutation above; SQLAlchemy re-expires
+                # `driver` so it correctly reflects its true, still-AVAILABLE
+                # state if accessed again.
+                db.rollback()
+                raise InvalidRideStateError(
+                    f"ride {ride.id} is no longer REQUESTED "
+                    "(concurrently cancelled or completed?)"
+                )
 
             try:
                 db.commit()
@@ -113,6 +148,10 @@ def match_ride(db: Session, ride: Ride) -> Ride:
                 )
                 continue
 
+            # Explicit, not implicit: reload from the DB rather than relying
+            # on synchronize_session behavior, so the returned object is
+            # guaranteed to reflect exactly what was committed.
+            db.refresh(ride)
             return ride
         finally:
             # Always release, on every path (success, failed re-check, or a

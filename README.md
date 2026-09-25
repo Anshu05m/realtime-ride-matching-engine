@@ -58,7 +58,7 @@ automatically the first time the postgres container starts.
 - [x] **Slice 3 — Concurrency safety**
 - [x] **Slice 4 — Idempotency**
 - [x] **Slice 5 — Surge pricing**
-- [ ] Slice 6 — FastAPI layer
+- [x] **Slice 6 — FastAPI layer**
 - [ ] Slice 7 — Simulation engine
 - [ ] Slice 8 — Dashboard
 - [ ] Slice 9 — Load testing + chaos testing

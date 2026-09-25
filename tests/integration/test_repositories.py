@@ -133,3 +133,97 @@ def test_ride_requires_valid_rider_id(db_session):
         db_session.rollback()
 
     assert raised, "expected a foreign key violation for a nonexistent rider_id"
+
+
+# --- Slice 6: transition_status (the atomic conditional UPDATE that
+# match_ride/cancel_ride/complete_ride all share) -----------------------
+
+
+def test_transition_status_succeeds_from_a_valid_source_status(db_session):
+    rider = RiderRepository(db_session).create(pickup_lat=1.0, pickup_lng=1.0)
+    ride_repo = RideRepository(db_session)
+    ride = ride_repo.create(rider_id=rider.id, pickup_lat=1.0, pickup_lng=1.0)
+
+    transitioned = ride_repo.transition_status(
+        ride.id, from_statuses=[RideStatus.REQUESTED], to_status=RideStatus.CANCELLED
+    )
+
+    assert transitioned is True
+    db_session.refresh(ride)
+    assert ride.status == RideStatus.CANCELLED
+
+
+def test_transition_status_fails_from_an_invalid_source_status(db_session):
+    # No threads needed -- this is exactly the guard's correctness, provable
+    # in a single connection: pre-set an invalid starting status and confirm
+    # the conditional UPDATE affects zero rows.
+    rider = RiderRepository(db_session).create(pickup_lat=1.0, pickup_lng=1.0)
+    ride_repo = RideRepository(db_session)
+    ride = ride_repo.create(rider_id=rider.id, pickup_lat=1.0, pickup_lng=1.0)
+    ride_repo.update_status(ride.id, status=RideStatus.COMPLETED)
+
+    transitioned = ride_repo.transition_status(
+        ride.id, from_statuses=[RideStatus.REQUESTED, RideStatus.MATCHED], to_status=RideStatus.CANCELLED
+    )
+
+    assert transitioned is False
+    db_session.refresh(ride)
+    assert ride.status == RideStatus.COMPLETED  # untouched
+
+
+def test_transition_status_applies_extra_values_atomically_with_the_status(db_session):
+    rider = RiderRepository(db_session).create(pickup_lat=1.0, pickup_lng=1.0)
+    driver = DriverRepository(db_session).create(
+        current_lat=1.0, current_lng=1.0, h3_index="a", zone_id="zone-a"
+    )
+    ride_repo = RideRepository(db_session)
+    ride = ride_repo.create(rider_id=rider.id, pickup_lat=1.0, pickup_lng=1.0)
+
+    transitioned = ride_repo.transition_status(
+        ride.id,
+        from_statuses=[RideStatus.REQUESTED],
+        to_status=RideStatus.MATCHED,
+        driver_id=driver.id,
+    )
+
+    assert transitioned is True
+    db_session.refresh(ride)
+    assert ride.status == RideStatus.MATCHED
+    assert ride.driver_id == driver.id
+
+
+def test_transition_status_on_unknown_ride_returns_false(db_session):
+    import uuid
+
+    ride_repo = RideRepository(db_session)
+    transitioned = ride_repo.transition_status(
+        uuid.uuid4(), from_statuses=[RideStatus.REQUESTED], to_status=RideStatus.CANCELLED
+    )
+    assert transitioned is False
+
+
+def test_driver_count_by_status(db_session):
+    driver_repo = DriverRepository(db_session)
+    driver_repo.create(current_lat=1.0, current_lng=1.0, h3_index="a", zone_id="zone-a")
+    driver_repo.create(
+        current_lat=1.0, current_lng=1.0, h3_index="b", zone_id="zone-a", status=DriverStatus.BUSY
+    )
+    driver_repo.create(
+        current_lat=1.0, current_lng=1.0, h3_index="c", zone_id="zone-a", status=DriverStatus.BUSY
+    )
+
+    assert driver_repo.count_by_status(DriverStatus.AVAILABLE) == 1
+    assert driver_repo.count_by_status(DriverStatus.BUSY) == 2
+    assert driver_repo.count_by_status(DriverStatus.OFFLINE) == 0
+
+
+def test_ride_count_by_status(db_session):
+    rider = RiderRepository(db_session).create(pickup_lat=1.0, pickup_lng=1.0)
+    ride_repo = RideRepository(db_session)
+    a = ride_repo.create(rider_id=rider.id, pickup_lat=1.0, pickup_lng=1.0)
+    b = ride_repo.create(rider_id=rider.id, pickup_lat=1.0, pickup_lng=1.0)
+    ride_repo.update_status(a.id, status=RideStatus.COMPLETED)
+    ride_repo.update_status(b.id, status=RideStatus.COMPLETED)
+
+    assert ride_repo.count_by_status(RideStatus.COMPLETED) == 2
+    assert ride_repo.count_by_status(RideStatus.REQUESTED) == 0

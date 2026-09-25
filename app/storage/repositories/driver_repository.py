@@ -91,3 +91,8 @@ class DriverRepository:
         driver.status = status
         self.db.flush()
         return driver
+
+    def count_by_status(self, status: DriverStatus) -> int:
+        """Global (not zone-scoped) count, for Slice 6's GET /stats."""
+        stmt = select(func.count()).select_from(Driver).where(Driver.status == status)
+        return self.db.scalar(stmt) or 0
