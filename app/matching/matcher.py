@@ -54,11 +54,26 @@ stat has a corresponding visible cause). Not every internal log point
 becomes a dashboard event -- the re-check-failure and IntegrityError-retry
 paths stay log-only, since they're internal retry detail CLAUDE.md's
 dashboard spec doesn't ask for.
+
+Slice 9: `acquire_lock` itself has no error handling (see its own module's
+docstring -- the primitive stays small/mechanism-only). A Redis outage
+during acquisition (redis.exceptions.ConnectionError/TimeoutError) used to
+propagate completely uncaught, past this loop, past the API route, to an
+unhandled 500 -- found while writing this slice's chaos tests. Caught here,
+narrowly (not the broad RedisError, which also covers actual application
+bugs like a malformed command -- conflating those with "infrastructure is
+down" would misattribute the failure), and re-raised as
+LockingUnavailableError immediately rather than `continue`-ing the
+candidate loop: if Redis is down, every remaining candidate's acquire_lock
+call will fail identically, so looping only adds latency to a request
+that's already doomed. app/main.py maps this to a structured 503.
 """
 
 import logging
 from datetime import UTC, datetime
 
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -67,7 +82,8 @@ from app.matching.candidate_search import find_ranked_candidates
 from app.models.driver import DriverStatus
 from app.models.ride import InvalidRideStateError, Ride, RideStatus
 from app.observability.events import emit
-from app.redis.lock import acquire_lock, release_lock
+from app.observability.metrics import metrics_tracker
+from app.redis.lock import LockingUnavailableError, acquire_lock, release_lock
 from app.storage.repositories.driver_repository import DriverRepository
 from app.storage.repositories.ride_repository import RideRepository
 
@@ -106,7 +122,12 @@ def match_ride(db: Session, ride: Ride) -> Ride:
 
     for candidate, _distance_km in ranked:
         lock_key = _lock_key(candidate.id)
-        token = acquire_lock(lock_key, settings.lock_ttl_ms)
+        try:
+            token = acquire_lock(lock_key, settings.lock_ttl_ms)
+        except (RedisConnectionError, RedisTimeoutError) as exc:
+            raise LockingUnavailableError(
+                f"Redis unavailable while acquiring lock for candidate {candidate.id}"
+            ) from exc
         if token is None:
             emit(
                 "LOCK_FAILED",
@@ -114,6 +135,7 @@ def match_ride(db: Session, ride: Ride) -> Ride:
                 ride_id=str(ride.id),
                 driver_id=str(candidate.id),
             )
+            metrics_tracker.record_lock_contention()
             continue
 
         emit(

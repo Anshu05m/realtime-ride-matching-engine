@@ -22,10 +22,41 @@ def test_snapshot_of_an_empty_tracker_is_all_zero():
     snapshot = tracker.snapshot()
 
     assert snapshot.failed_matches == 0
+    assert snapshot.lock_contention_count == 0
     assert snapshot.match_throughput_per_minute == 0
     assert snapshot.p50_latency_ms == 0.0
     assert snapshot.p95_latency_ms == 0.0
     assert snapshot.p99_latency_ms == 0.0
+
+
+def test_record_lock_contention_increments_independently_of_record():
+    tracker = MetricsTracker(window_size=10)
+
+    tracker.record_lock_contention()
+    tracker.record_lock_contention()
+    tracker.record("matched", 0.01)  # a ride can succeed despite contention
+
+    snapshot = tracker.snapshot()
+    assert snapshot.lock_contention_count == 2
+    assert snapshot.failed_matches == 0
+
+
+def test_lock_contention_count_is_thread_safe_under_concurrent_writers():
+    import threading
+
+    tracker = MetricsTracker(window_size=10)
+
+    def worker():
+        for _ in range(500):
+            tracker.record_lock_contention()
+
+    threads = [threading.Thread(target=worker) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert tracker.snapshot().lock_contention_count == 5000
 
 
 def test_unmatched_outcomes_increment_failed_matches_lifetime_counter():

@@ -7,7 +7,7 @@ from app.observability.metrics import metrics_tracker
 from app.pricing.surge import surge_by_zone
 from app.schemas.stats import StatsResponse
 from app.schemas.surge import SurgeResponse
-from app.storage.database import get_db
+from app.storage.database import db_latency_tracker, get_db
 from app.storage.repositories.driver_repository import DriverRepository
 from app.storage.repositories.ride_repository import ACTIVE_RIDE_STATUSES, RideRepository
 
@@ -21,6 +21,7 @@ def get_stats(db: Session = Depends(get_db)) -> StatsResponse:
 
     active_rides = sum(ride_repo.count_by_status(status) for status in ACTIVE_RIDE_STATUSES)
     metrics = metrics_tracker.snapshot()
+    db_p50, db_p95, db_p99 = db_latency_tracker.percentiles()
     zones = {
         zone_id: SurgeResponse(
             zone_id=result.zone_id,
@@ -43,4 +44,8 @@ def get_stats(db: Session = Depends(get_db)) -> StatsResponse:
         p95_latency_ms=metrics.p95_latency_ms,
         p99_latency_ms=metrics.p99_latency_ms,
         surge_by_zone=zones,
+        lock_contention_count=metrics.lock_contention_count,
+        db_p50_latency_ms=db_p50,
+        db_p95_latency_ms=db_p95,
+        db_p99_latency_ms=db_p99,
     )

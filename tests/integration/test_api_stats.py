@@ -45,8 +45,28 @@ def test_stats_reflects_driver_and_ride_counts(client):
         "p95_latency_ms",
         "p99_latency_ms",
         "surge_by_zone",
+        "lock_contention_count",
+        "db_p50_latency_ms",
+        "db_p95_latency_ms",
+        "db_p99_latency_ms",
     }
     assert driver_resp["status"] == "available"
+
+
+def test_stats_db_latency_fields_are_non_negative_after_activity(client):
+    client.post("/drivers", json={"current_lat": LAT, "current_lng": LNG})
+
+    body = client.get("/stats").json()
+
+    assert body["db_p50_latency_ms"] >= 0
+    assert body["db_p95_latency_ms"] >= body["db_p50_latency_ms"]
+    assert body["db_p99_latency_ms"] >= body["db_p95_latency_ms"]
+
+
+def test_stats_lock_contention_count_is_a_non_negative_lifetime_counter(client):
+    baseline = client.get("/stats").json()["lock_contention_count"]
+
+    assert baseline >= 0
 
 
 def test_stats_latency_fields_are_non_negative_after_a_match(client):

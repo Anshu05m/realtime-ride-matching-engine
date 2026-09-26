@@ -29,6 +29,18 @@ class StatsResponse(BaseModel):
     - surge_by_zone covers every zone with at least one ride requested in
       the current demand window (settings.surge_demand_window_seconds) --
       see app/pricing/surge.py's surge_by_zone().
+
+    Slice 9 additions:
+    - lock_contention_count is an IN-PROCESS, LIFETIME counter (same scope
+      as failed_matches, same reset-on-restart caveat) -- one increment per
+      CANDIDATE that lost a Redis lock race (app/matching/matcher.py's
+      LOCK_FAILED point), not one per failed ride; a ride can generate
+      several of these before eventually succeeding on a later candidate.
+    - db_p50/p95/p99_latency_ms are computed over a bounded rolling window
+      of the most recent individual SQL statements executed on the engine
+      (settings.metrics_window_size) -- every statement, not just
+      match_ride's, so this is a system-wide database-latency signal, not
+      a match-specific one. See app/observability/db_metrics.py.
     """
 
     available_drivers: int
@@ -43,3 +55,8 @@ class StatsResponse(BaseModel):
     p95_latency_ms: float
     p99_latency_ms: float
     surge_by_zone: dict[str, SurgeResponse]
+
+    lock_contention_count: int
+    db_p50_latency_ms: float
+    db_p95_latency_ms: float
+    db_p99_latency_ms: float

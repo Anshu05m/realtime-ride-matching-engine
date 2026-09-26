@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
@@ -7,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import drivers, riders, rides, stats, websocket, zones
@@ -14,8 +16,11 @@ from app.config import settings
 from app.models.ride import InvalidRideStateError, RideNotFoundError
 from app.observability.events import event_bus
 from app.redis.client import redis_client
+from app.redis.lock import LockingUnavailableError
 from app.services.ride_service import IdempotencyKeyConflictError
 from app.storage.database import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 @contextlib.asynccontextmanager
@@ -106,6 +111,31 @@ async def ride_not_found_handler(request: Request, exc: RideNotFoundError) -> JS
 @app.exception_handler(InvalidRideStateError)
 async def invalid_ride_state_handler(request: Request, exc: InvalidRideStateError) -> JSONResponse:
     return _error_response(409, "invalid_ride_state", str(exc))
+
+
+# Slice 9: two dependency-unavailable handlers, both 503 (the dependency is
+# temporarily unreachable/overloaded, not that our own code has a bug) --
+# found while writing this slice's chaos tests, both previously propagated
+# as an unhandled, unstructured 500, contradicting this file's own envelope
+# invariant above. Both return a FIXED, generic client-facing message (not
+# str(exc)) -- unlike the domain exceptions above, a raw DB/Redis driver
+# error can contain internal detail (SQL fragments, connection info) that
+# has no business being a stable, public API response. The real exception
+# is logged server-side instead.
+
+
+@app.exception_handler(LockingUnavailableError)
+async def locking_unavailable_handler(request: Request, exc: LockingUnavailableError) -> JSONResponse:
+    logger.exception("locking unavailable", exc_info=exc)
+    return _error_response(
+        503, "locking_unavailable", "the matching coordination layer is temporarily unavailable"
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    logger.exception("database error", exc_info=exc)
+    return _error_response(503, "database_error", "a database error occurred, please retry")
 
 
 @app.get("/health")

@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,/rides,HTTPError('503 Server Error: Service Unavailable for url: /rides'),5,2026-09-26T13:52:59Z,2026-09-26T13:52:59Z
+POST,/riders,HTTPError('503 Server Error: Service Unavailable for url: /riders'),32,2026-09-26T13:52:59Z,2026-09-26T13:52:59Z

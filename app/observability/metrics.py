@@ -21,11 +21,26 @@ Two deliberately different definitions, not one blurry one:
 - Throughput is an exact count of successful matches in the trailing 60
   real seconds, not an extrapolation from a smaller sample.
 
-failed_matches is a lifetime, in-process counter -- unlike its sibling stats
-fields (completed_rides, cancelled_rides), it has no corresponding database
-row anywhere (a failed match attempt changes nothing durable), so it can't
-be recovered from Postgres and resets to zero on every server restart. This
-asymmetry is real and is documented on StatsResponse, not hidden.
+failed_matches and lock_contention_count are lifetime, in-process counters
+-- unlike their sibling stats fields (completed_rides, cancelled_rides),
+neither has a corresponding database row anywhere (a failed match attempt,
+or a single candidate losing the Redis lock race, changes nothing durable),
+so they can't be recovered from Postgres and both reset to zero on every
+server restart. This asymmetry is real and is documented on StatsResponse,
+not hidden.
+
+lock_contention_count (Slice 9) is incremented in app/matching/matcher.py at
+the exact point a LOCK_FAILED dashboard event is already emitted -- one
+per-candidate lock-acquire loss, not one per failed ride (a ride can lose
+the lock race on several candidates before ultimately succeeding on a later
+one, or failing outright). Deliberately NOT derived by counting LOCK_FAILED
+events over the Slice 8 dashboard's WebSocket stream instead: that queue is
+bounded and silently drops events under backpressure (correct for a live
+dashboard, wrong for an authoritative benchmark number) -- under exactly
+the high-concurrency conditions a load test cares about most, event-stream
+counting would systematically undercount. Being lifetime-scoped, a
+benchmark must snapshot this before and after a run and diff it, not read
+one mid-run value.
 
 Latency percentiles use a BOUNDED rolling window (settings.metrics_window_size
 recent match_ride calls), consistent with Slice 5's own precedent that surge
@@ -36,7 +51,6 @@ memory bounded on a long-running server, at the cost of percentiles being
 
 from __future__ import annotations
 
-import statistics
 import threading
 import time
 from collections import deque
@@ -44,6 +58,7 @@ from dataclasses import dataclass
 from typing import Callable, Literal
 
 from app.config import settings
+from app.observability.percentiles import percentile
 
 Outcome = Literal["matched", "unmatched", "error"]
 
@@ -60,6 +75,7 @@ class MatchAttempt:
 @dataclass(frozen=True)
 class MetricsSnapshot:
     failed_matches: int
+    lock_contention_count: int
     match_throughput_per_minute: int
     p50_latency_ms: float
     p95_latency_ms: float
@@ -71,6 +87,7 @@ class MetricsTracker:
         self._lock = threading.Lock()
         self._recent: deque[MatchAttempt] = deque(maxlen=window_size)
         self._failed_matches_total = 0
+        self._lock_contention_total = 0
         self._now = now_fn
 
     def record(self, outcome: Outcome, latency_seconds: float) -> None:
@@ -81,10 +98,19 @@ class MetricsTracker:
             if outcome == "unmatched":
                 self._failed_matches_total += 1
 
+    def record_lock_contention(self) -> None:
+        """Called once per candidate that loses the Redis lock race (see
+        app/matching/matcher.py's LOCK_FAILED emit site) -- independent of
+        record()'s per-ride outcome, since one ride can generate several of
+        these before it ultimately succeeds or fails."""
+        with self._lock:
+            self._lock_contention_total += 1
+
     def snapshot(self) -> MetricsSnapshot:
         with self._lock:
             recent = list(self._recent)
             failed_total = self._failed_matches_total
+            lock_contention_total = self._lock_contention_total
             now = self._now()
 
         throughput = sum(
@@ -96,21 +122,12 @@ class MetricsTracker:
 
         return MetricsSnapshot(
             failed_matches=failed_total,
+            lock_contention_count=lock_contention_total,
             match_throughput_per_minute=throughput,
-            p50_latency_ms=_percentile(latencies_ms, 50),
-            p95_latency_ms=_percentile(latencies_ms, 95),
-            p99_latency_ms=_percentile(latencies_ms, 99),
+            p50_latency_ms=percentile(latencies_ms, 50),
+            p95_latency_ms=percentile(latencies_ms, 95),
+            p99_latency_ms=percentile(latencies_ms, 99),
         )
-
-
-def _percentile(sorted_values: list[float], pct: float) -> float:
-    if not sorted_values:
-        return 0.0
-    if len(sorted_values) == 1:
-        return sorted_values[0]
-    quantiles = statistics.quantiles(sorted_values, n=100, method="inclusive")
-    index = min(max(int(pct) - 1, 0), len(quantiles) - 1)
-    return quantiles[index]
 
 
 metrics_tracker = MetricsTracker(window_size=settings.metrics_window_size)

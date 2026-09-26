@@ -22,6 +22,21 @@ import uuid
 
 from app.redis.client import redis_client
 
+
+class LockingUnavailableError(Exception):
+    """Raised (Slice 9) when Redis itself is unreachable/timing out during
+    lock acquisition -- distinct from `token is None` (the key is held by
+    someone else, an ordinary, expected outcome) and distinct from
+    NoAvailableDriverError (no driver exists, a normal business outcome).
+    This means the coordination layer itself is down, which is an
+    infrastructure failure, not a matching outcome -- conflating the three
+    would misattribute what's actually wrong. Defined here, next to the
+    primitive, rather than in app/matching/matcher.py: the primitive stays
+    the single source of truth for what "lock acquisition can fail" means,
+    even though the primitive's own functions don't raise it themselves
+    (see match_ride, which is where redis.exceptions.ConnectionError/
+    TimeoutError actually get caught and translated into this)."""
+
 # Atomic compare-and-delete: only removes the key if its value still matches
 # the token we were given, so a caller can never release a lock it doesn't
 # own (e.g. one that expired and was re-acquired by someone else). Must be a

@@ -26,6 +26,12 @@ dev = [
     # this is the standard way to test asyncio code with pytest.
     "pytest-asyncio>=0.24",
 ]
+# Slice 9: a separate group, not folded into `dev` -- Locust pulls in a
+# heavier transitive footprint (gevent, Flask, ...) that most contributors
+# running the ordinary test suite don't need.
+load-test = [
+    "locust>=2.31",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

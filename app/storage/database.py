@@ -5,8 +5,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
+from app.observability.db_metrics import DbLatencyTracker, register_db_latency_listeners
 
 engine = create_engine(settings.database_url, echo=settings.database_echo, pool_pre_ping=True)
+
+# Slice 9: per-statement latency, feeding GET /stats's db_p50/p95/p99 fields.
+# Registered here (once, right after engine creation) rather than at each
+# call site -- see app/observability/db_metrics.py for why.
+db_latency_tracker = DbLatencyTracker(window_size=settings.metrics_window_size)
+register_db_latency_listeners(engine, db_latency_tracker)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
