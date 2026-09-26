@@ -51,6 +51,29 @@ automatically the first time the postgres container starts.
 ./venv/bin/pytest -v
 ```
 
+Most tests only need `postgres`/`redis`. One test —
+`tests/concurrency/test_simulation_contention.py` — additionally requires the
+full stack (`docker compose up`, including the `app` container) and is
+skipped automatically if nothing answers on `localhost:8000`.
+
+## Running the simulation
+
+With the full stack up (`docker compose up`), generate synthetic traffic
+against the live API:
+
+```bash
+./venv/bin/python -m app.simulation --duration-seconds 30
+```
+
+This creates a pool of synthetic drivers, moves them around a simulated area,
+and fires ride requests — including deliberately concentrated,
+barrier-synchronized bursts aimed at a small "hotspot" sub-region — to
+exercise real driver-matching contention end-to-end. Prints a summary
+(match rate, client-measured p50/p95/p99 latency) at the end. See
+`./venv/bin/python -m app.simulation --help` for every configurable
+parameter (driver/rider counts, request rate, area/hotspot geometry, driver
+speed, ride duration, cancellation rate, a `--seed` for reproducible runs).
+
 ## Build plan
 
 - [x] **Slice 1 — Core schema + models**
@@ -59,7 +82,7 @@ automatically the first time the postgres container starts.
 - [x] **Slice 4 — Idempotency**
 - [x] **Slice 5 — Surge pricing**
 - [x] **Slice 6 — FastAPI layer**
-- [ ] Slice 7 — Simulation engine
+- [x] **Slice 7 — Simulation engine**
 - [ ] Slice 8 — Dashboard
 - [ ] Slice 9 — Load testing + chaos testing
 - [ ] Slice 10 — Documentation and polish
