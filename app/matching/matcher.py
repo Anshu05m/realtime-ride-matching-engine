@@ -44,6 +44,16 @@ REQUESTED ride once the lock's TTL expires — see INTERVIEW_PREP.md for the
 full worker-death-timing writeup. This is not "exactly once" or "fault
 tolerant" matching; it's "no double-booking survives durably," which is a
 narrower, defensible claim.
+
+Slice 8: every logger.info/warning call below is paired with an `emit(...)`
+call at the same point, feeding the dashboard's live event log over the
+event bus (app/observability/events.py) -- CANDIDATES_FOUND, LOCK_ACQUIRED,
+LOCK_FAILED, DRIVER_ASSIGNED, and NO_DRIVER_AVAILABLE (an addition beyond
+CLAUDE.md's literal event list, needed so the dashboard's "failed matches"
+stat has a corresponding visible cause). Not every internal log point
+becomes a dashboard event -- the re-check-failure and IntegrityError-retry
+paths stay log-only, since they're internal retry detail CLAUDE.md's
+dashboard spec doesn't ask for.
 """
 
 import logging
@@ -56,6 +66,7 @@ from app.config import settings
 from app.matching.candidate_search import find_ranked_candidates
 from app.models.driver import DriverStatus
 from app.models.ride import InvalidRideStateError, Ride, RideStatus
+from app.observability.events import emit
 from app.redis.lock import acquire_lock, release_lock
 from app.storage.repositories.driver_repository import DriverRepository
 from app.storage.repositories.ride_repository import RideRepository
@@ -84,6 +95,12 @@ def match_ride(db: Session, ride: Ride) -> Ride:
     # (and holding one across an H3 ring search would only add contention for
     # no benefit; CLAUDE.md's flow explicitly ranks before locking).
     ranked = find_ranked_candidates(db, ride.pickup_lat, ride.pickup_lng)
+    emit(
+        "CANDIDATES_FOUND",
+        f"found {len(ranked)} candidate(s) for ride {ride.id}",
+        ride_id=str(ride.id),
+        candidate_count=len(ranked),
+    )
     driver_repo = DriverRepository(db)
     ride_repo = RideRepository(db)
 
@@ -91,8 +108,20 @@ def match_ride(db: Session, ride: Ride) -> Ride:
         lock_key = _lock_key(candidate.id)
         token = acquire_lock(lock_key, settings.lock_ttl_ms)
         if token is None:
-            logger.info("skipped candidate %s: lock contention", candidate.id)
+            emit(
+                "LOCK_FAILED",
+                f"skipped candidate {candidate.id}: lock contention",
+                ride_id=str(ride.id),
+                driver_id=str(candidate.id),
+            )
             continue
+
+        emit(
+            "LOCK_ACQUIRED",
+            f"acquired lock for candidate {candidate.id}",
+            ride_id=str(ride.id),
+            driver_id=str(candidate.id),
+        )
 
         try:
             # Re-check under the lock: no concurrent writer can interleave with
@@ -152,10 +181,25 @@ def match_ride(db: Session, ride: Ride) -> Ride:
             # on synchronize_session behavior, so the returned object is
             # guaranteed to reflect exactly what was committed.
             db.refresh(ride)
+            emit(
+                "DRIVER_ASSIGNED",
+                f"ride {ride.id} matched to driver {driver.id}",
+                ride_id=str(ride.id),
+                driver_id=str(driver.id),
+                pickup_lat=ride.pickup_lat,
+                pickup_lng=ride.pickup_lng,
+            )
             return ride
         finally:
             # Always release, on every path (success, failed re-check, or a
             # rolled-back commit) — and only ever this lock, via its token.
             release_lock(lock_key, token)
 
+    emit(
+        "NO_DRIVER_AVAILABLE",
+        f"no available driver found for ride {ride.id}",
+        ride_id=str(ride.id),
+        pickup_lat=ride.pickup_lat,
+        pickup_lng=ride.pickup_lng,
+    )
     raise NoAvailableDriverError(f"no available driver found for ride {ride.id}")

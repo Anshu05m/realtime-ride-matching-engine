@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.matching.geo import latlng_to_h3
+from app.models.driver import DriverStatus
 from app.pricing.zones import zone_id_for_point
 from app.schemas.driver import DriverCreate, DriverLocationUpdate, DriverResponse
 from app.schemas.errors import ErrorResponse
@@ -12,6 +13,19 @@ from app.storage.database import get_db
 from app.storage.repositories.driver_repository import DriverRepository
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
+
+
+@router.get("", response_model=list[DriverResponse], summary="List drivers")
+def list_drivers(
+    status: DriverStatus | None = None, db: Session = Depends(get_db)
+) -> list[DriverResponse]:
+    """Slice 8: powers the dashboard's initial map load and periodic
+    refresh -- unfiltered by default, or scoped with ?status= for symmetry
+    with the repository's existing list_by_status."""
+    repo = DriverRepository(db)
+    if status is not None:
+        return repo.list_by_status(status)
+    return repo.list_all()
 
 
 def _not_found(driver_id: uuid.UUID) -> HTTPException:

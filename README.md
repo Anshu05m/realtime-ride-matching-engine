@@ -74,6 +74,19 @@ exercise real driver-matching contention end-to-end. Prints a summary
 parameter (driver/rider counts, request rate, area/hotspot geometry, driver
 speed, ride duration, cancellation rate, a `--seed` for reproducible runs).
 
+## Live dashboard
+
+With the full stack up (`docker compose up`), open
+[http://localhost:8000/dashboard/](http://localhost:8000/dashboard/) for a
+live Leaflet map of drivers, a stats/surge panel, and a live event log fed
+by a WebSocket (`GET /ws`) — run the simulation (above) in another shell to
+watch matching activity, including real lock contention, as it happens.
+
+The map/stats panel are driven by periodic REST polling (`GET /drivers`,
+`GET /stats`); the WebSocket is used only as an append-only stream for the
+event log and transient map animations — see `docs/plans/slice-08-
+dashboard.md` for why.
+
 ## Build plan
 
 - [x] **Slice 1 — Core schema + models**
@@ -83,6 +96,6 @@ speed, ride duration, cancellation rate, a `--seed` for reproducible runs).
 - [x] **Slice 5 — Surge pricing**
 - [x] **Slice 6 — FastAPI layer**
 - [x] **Slice 7 — Simulation engine**
-- [ ] Slice 8 — Dashboard
+- [x] **Slice 8 — Dashboard**
 - [ ] Slice 9 — Load testing + chaos testing
 - [ ] Slice 10 — Documentation and polish

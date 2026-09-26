@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ride-Matching Engine — Live Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Leaflet via CDN -- a demo-purpose static dashboard, not a production
+       frontend build; no bundler, no framework. Requires internet access at
+       demo time (a named, minor limitation, not a silent assumption). -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Real-Time Ride-Matching Engine</h1>
+    <span id="connection-status" class="status status--connecting">connecting…</span>
+  </header>
+
+  <main>
+    <section id="map-panel">
+      <div id="map"></div>
+    </section>
+
+    <aside id="side-panel">
+      <section id="stats-panel">
+        <h2>Live Stats</h2>
+        <dl id="stats-grid" class="stats-grid"></dl>
+
+        <h3>Surge by zone</h3>
+        <table id="surge-table">
+          <thead><tr><th>Zone</th><th>Demand</th><th>Supply</th><th>×</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section id="event-log-panel">
+        <h2>Event Log</h2>
+        <ul id="event-log"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -71,3 +71,19 @@ def zone_surge(db: Session, zone_id: str, *, now: datetime | None = None) -> Sur
         supply=supply,
         multiplier=surge_multiplier(demand, supply),
     )
+
+
+def surge_by_zone(db: Session, *, now: datetime | None = None) -> dict[str, SurgeResult]:
+    """Slice 8: GET /stats's "current surge by zone" -- every zone with at
+    least one ride requested in the current demand window gets a live
+    zone_surge() computed the same way create_ride already computes it. This
+    is the source of truth for zone surge on the dashboard; RIDE_REQUESTED's
+    event payload also carries a zone's surge_multiplier for the live event
+    log, but that's a point-in-time snapshot of one ride, not a substitute
+    for this -- a zone with no *recent* request would otherwise show
+    stale-or-missing surge indefinitely if the event stream were the only
+    source."""
+    now = now or datetime.now(UTC)
+    since = now - timedelta(seconds=settings.surge_demand_window_seconds)
+    zone_ids = RideRepository(db).list_recent_zone_ids(since=since)
+    return {zone_id: zone_surge(db, zone_id, now=now) for zone_id in zone_ids}

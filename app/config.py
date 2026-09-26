@@ -49,5 +49,20 @@ class Settings(BaseSettings):
     surge_sensitivity: float = 0.5
     surge_max_multiplier: float = 3.0
 
+    # Slice 8: max in-flight dashboard events buffered between the sync
+    # publishers (matcher.py, ride_service.py) and the async WebSocket
+    # broadcast loop. Bounded and non-blocking on purpose -- if nothing is
+    # consuming (no dashboard connected, or between app lifespans in tests),
+    # publish() must never block a request or grow without limit; a full
+    # queue just drops the newest event, logged at WARNING.
+    dashboard_event_queue_size: int = 1000
+
+    # Slice 8: how many recent match_ride outcomes GET /stats's p50/p95/p99
+    # latency figures are computed over. A rolling window, not an all-time
+    # history -- the same "bounded, not all-time" precedent surge's demand
+    # window (surge_demand_window_seconds) already set in Slice 5, needed
+    # here to keep memory bounded on a long-running server.
+    metrics_window_size: int = 500
+
 
 settings = Settings()

@@ -22,6 +22,9 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
+    # Slice 8 is the project's first async code (the WebSocket event bus) --
+    # this is the standard way to test asyncio code with pytest.
+    "pytest-asyncio>=0.24",
 ]
 
 [build-system]
@@ -34,3 +37,4 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "strict"

@@ -44,6 +44,15 @@ is quoted here rather than later at match time because matching is a
 separate, optional step (a ride can stay REQUESTED forever if
 NoAvailableDriverError is raised) -- quoting only on a successful match
 would leave every unmatched ride with no zone/price at all.
+
+Slice 8 note: create_ride emits a RIDE_REQUESTED dashboard event, but only
+on a genuine new create -- not on an idempotent-replay hit (the early
+`return existing` above never reaches the emit call), so a retried request
+doesn't log a second, misleading "requested" event for the same ride.
+cancel_ride/complete_ride emit RIDE_CANCELLED/RIDE_COMPLETED; these are also
+this module's first logger calls at all (added as a direct side effect of
+wiring the dashboard's event log, via app.observability.events.emit, not a
+gap that existed before).
 """
 
 import uuid
@@ -55,6 +64,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.driver import DriverStatus
 from app.models.ride import InvalidRideStateError, Ride, RideNotFoundError, RideStatus
+from app.observability.events import emit
 from app.pricing.surge import zone_surge
 from app.pricing.zones import zone_id_for_point
 from app.storage.repositories.driver_repository import DriverRepository
@@ -147,6 +157,16 @@ def create_ride(
             raise
         return winner
 
+    emit(
+        "RIDE_REQUESTED",
+        f"ride {ride.id} requested by rider {rider_id}",
+        ride_id=str(ride.id),
+        rider_id=str(rider_id),
+        zone_id=zone_id,
+        surge_multiplier=surge.multiplier,
+        pickup_lat=pickup_lat,
+        pickup_lng=pickup_lng,
+    )
     return ride
 
 
@@ -204,6 +224,12 @@ def cancel_ride(db: Session, ride_id: uuid.UUID) -> Ride:
 
     db.commit()
     db.refresh(ride)
+    emit(
+        "RIDE_CANCELLED",
+        f"ride {ride.id} cancelled",
+        ride_id=str(ride.id),
+        driver_id=str(ride.driver_id) if ride.driver_id else None,
+    )
     return ride
 
 
@@ -224,4 +250,10 @@ def complete_ride(db: Session, ride_id: uuid.UUID) -> Ride:
 
     db.commit()
     db.refresh(ride)
+    emit(
+        "RIDE_COMPLETED",
+        f"ride {ride.id} completed",
+        ride_id=str(ride.id),
+        driver_id=str(ride.driver_id) if ride.driver_id else None,
+    )
     return ride

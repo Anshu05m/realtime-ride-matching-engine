@@ -1,0 +1,100 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --border: #2a2f3a;
+  --text: #e6e8eb;
+  --muted: #8b93a1;
+  --accent: #4da3ff;
+  --available: #35c46b;
+  --busy: #e0553f;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+
+.status { font-size: 12px; padding: 3px 10px; border-radius: 999px; }
+.status--connecting { background: #4a3b1a; color: #e0b53f; }
+.status--open { background: #123a24; color: var(--available); }
+.status--closed { background: #3a1616; color: var(--busy); }
+
+main {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  height: calc(100vh - 49px);
+}
+
+#map-panel { position: relative; }
+#map { width: 100%; height: 100%; background: #1b1e26; }
+
+#side-panel {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+
+#stats-panel, #event-log-panel {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+#event-log-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 6px; }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 13px;
+}
+.stats-grid dt { color: var(--muted); }
+.stats-grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 3px 4px; }
+th { color: var(--muted); font-weight: 500; }
+
+#event-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+#event-log li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+#event-log li .ride-tag {
+  display: inline-block;
+  width: 62px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+#event-log li .event-type { color: var(--accent); font-weight: 600; }
+#event-log li.event-DRIVER_ASSIGNED .event-type { color: var(--available); }
+#event-log li.event-NO_DRIVER_AVAILABLE .event-type,
+#event-log li.event-LOCK_FAILED .event-type { color: var(--busy); }

@@ -122,3 +122,18 @@ class RideRepository:
         count."""
         stmt = select(func.count()).select_from(Ride).where(Ride.status == status)
         return self.db.scalar(stmt) or 0
+
+    def list_recent_zone_ids(self, *, since: datetime) -> list[str]:
+        """Slice 8: which zones to report surge for on GET /stats -- any
+        zone with at least one ride requested since `since` (reuses the same
+        settings.surge_demand_window_seconds window Slice 5's own demand
+        count uses). Kept DB-driven, not an in-memory "recently seen zones"
+        cache, consistent with Slice 5's decision that surge stays a live
+        Postgres-computed signal rather than adding a caching layer with no
+        demonstrated need."""
+        stmt = (
+            select(Ride.zone_id)
+            .where(Ride.zone_id.isnot(None), Ride.created_at >= since)
+            .distinct()
+        )
+        return [zone_id for zone_id in self.db.scalars(stmt) if zone_id is not None]

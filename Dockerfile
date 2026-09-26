@@ -8,6 +8,7 @@ RUN apt-get update \
 
 COPY pyproject.toml ./
 COPY app ./app
+COPY dashboard ./dashboard
 COPY migrations ./migrations
 COPY alembic.ini ./
 

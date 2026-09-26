@@ -1,3 +1,4 @@
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -5,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.matching.matcher import NoAvailableDriverError, match_ride
 from app.models.ride import RideStatus
+from app.observability.metrics import metrics_tracker
 from app.schemas.errors import ErrorResponse
 from app.schemas.ride import RideCreateRequest, RideResponse
 from app.services.ride_service import cancel_ride, complete_ride, create_ride
@@ -35,6 +37,13 @@ def request_ride(
     docstrings for why); this route never calls db.commit() itself -- it's
     pure orchestration with no transaction-boundary responsibility of its
     own.
+
+    Slice 8: wall-clock time around the match_ride call alone (not
+    create_ride+match_ride together) is recorded into metrics_tracker for
+    GET /stats's p50/p95/p99 latency figures -- see
+    app/observability/metrics.py's module docstring for why latency is
+    scoped to match_ride specifically, and why a failed match (unmatched) is
+    still part of the distribution, not excluded from it.
     """
     key = idempotency_key or None  # an empty header value isn't a real key
     ride = create_ride(
@@ -50,10 +59,17 @@ def request_ride(
         # true for a fresh ride, and correctly skips re-matching an
         # idempotent-replay hit that already progressed past REQUESTED (which
         # would otherwise hit match_ride's own precondition ValueError).
+        start = time.perf_counter()
         try:
             ride = match_ride(db, ride)
         except NoAvailableDriverError:
-            pass  # valid outcome: ride stays REQUESTED, still a 201
+            metrics_tracker.record("unmatched", time.perf_counter() - start)
+            # valid outcome: ride stays REQUESTED, still a 201
+        except Exception:
+            metrics_tracker.record("error", time.perf_counter() - start)
+            raise
+        else:
+            metrics_tracker.record("matched", time.perf_counter() - start)
 
     return ride
 

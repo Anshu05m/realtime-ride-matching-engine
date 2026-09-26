@@ -1,14 +1,42 @@
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import drivers, riders, rides, stats, zones
+from app.api import drivers, riders, rides, stats, websocket, zones
+from app.config import settings
 from app.models.ride import InvalidRideStateError, RideNotFoundError
+from app.observability.events import event_bus
 from app.redis.client import redis_client
 from app.services.ride_service import IdempotencyKeyConflictError
 from app.storage.database import SessionLocal
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Slice 8: the project's first lifespan hook -- attaches the dashboard
+    event bus to this process's running event loop and starts its broadcast
+    consumer task (see app/observability/events.py's module docstring for
+    why attach/detach is per-lifespan, not once at import time). Shutdown
+    cancels the task and awaits it -- a real coroutine `await` on
+    asyncio.Queue.get() is natively cancellable, so this never hangs or
+    leaks a thread, unlike the blocking-queue bridge design it replaced."""
+    event_bus.attach(asyncio.get_running_loop(), maxsize=settings.dashboard_event_queue_size)
+    broadcast_task = asyncio.create_task(event_bus.run_broadcast_loop())
+    try:
+        yield
+    finally:
+        broadcast_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await broadcast_task
+        event_bus.detach()
+
 
 app = FastAPI(
     title="Real-Time Ride-Matching Engine",
@@ -18,6 +46,7 @@ app = FastAPI(
         "endpoints wrap the matching/idempotency/pricing logic built in "
         "Slices 2-5; see /docs for the full API."
     ),
+    lifespan=lifespan,
 )
 
 app.include_router(drivers.router)
@@ -25,6 +54,12 @@ app.include_router(riders.router)
 app.include_router(rides.router)
 app.include_router(zones.router)
 app.include_router(stats.router)
+app.include_router(websocket.router)
+
+# Slice 8: the static dashboard (dashboard/ at the project root, a sibling of
+# app/ -- see CLAUDE.md's project structure), served at /dashboard/. Mounted
+# last so it never shadows an API route.
+app.mount("/dashboard", StaticFiles(directory="dashboard", html=True), name="dashboard")
 
 
 # --- Structured error envelope -----------------------------------------

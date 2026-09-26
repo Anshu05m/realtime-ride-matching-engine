@@ -50,6 +50,12 @@ class DriverRepository:
         stmt = select(Driver).where(Driver.status == status)
         return list(self.db.scalars(stmt))
 
+    def list_all(self) -> list[Driver]:
+        """Slice 8: unfiltered listing for the dashboard's initial map load
+        and periodic refresh -- list_by_status requires a status, and no
+        unfiltered mode existed before this."""
+        return list(self.db.scalars(select(Driver)))
+
     def list_available_in_cells(self, cells: Iterable[str]) -> list[Driver]:
         """Candidate-discovery query for Slice 2's matching: available drivers
         whose h3_index falls in one of the given cells. `cells` is normally a

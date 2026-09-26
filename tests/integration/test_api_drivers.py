@@ -66,3 +66,29 @@ def test_update_unknown_driver_location_returns_404(client):
     )
 
     assert response.status_code == 404
+
+
+def test_list_drivers_returns_all_drivers_unfiltered(client):
+    a = client.post("/drivers", json={"current_lat": LAT, "current_lng": LNG}).json()
+    b = client.post("/drivers", json={"current_lat": LAT, "current_lng": LNG}).json()
+
+    response = client.get("/drivers")
+
+    assert response.status_code == 200
+    ids = {driver["id"] for driver in response.json()}
+    assert {a["id"], b["id"]}.issubset(ids)
+
+
+def test_list_drivers_filters_by_status(client):
+    driver = client.post("/drivers", json={"current_lat": LAT, "current_lng": LNG}).json()
+    rider_id = client.post("/riders", json={"pickup_lat": LAT, "pickup_lng": LNG}).json()["id"]
+    ride = client.post(
+        "/rides", json={"rider_id": rider_id, "pickup_lat": LAT, "pickup_lng": LNG}
+    ).json()
+    assert ride["status"] == "matched"
+
+    busy = client.get("/drivers", params={"status": "busy"}).json()
+    available = client.get("/drivers", params={"status": "available"}).json()
+
+    assert driver["id"] in {d["id"] for d in busy}
+    assert driver["id"] not in {d["id"] for d in available}
