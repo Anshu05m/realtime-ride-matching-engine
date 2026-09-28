@@ -60,6 +60,44 @@ main {
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
 h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 6px; }
 
+/* Hero stats: the 5 numbers a viewer should be able to read at a glance. */
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.hero-tile {
+  background: var(--panel-raised, #1d212b);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.hero-tile__value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.hero-tile__label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Everything else already fetched before this pass, still here, just
+   de-emphasized behind a native, zero-JS disclosure widget. */
+details { margin-top: 8px; }
+details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+details[open] summary { margin-bottom: 8px; }
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -69,6 +107,21 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 }
 .stats-grid dt { color: var(--muted); }
 .stats-grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.surge-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.surge-summary__value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { text-align: left; padding: 3px 4px; }
@@ -80,21 +133,26 @@ th { color: var(--muted); font-weight: 500; }
   padding: 0;
   overflow-y: auto;
   flex: 1;
-  font-size: 12px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  font-family: var(--font);
 }
 #event-log li {
-  padding: 4px 0;
+  padding: 5px 0;
   border-bottom: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#event-log li .event-time {
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
-#event-log li .ride-tag {
-  display: inline-block;
-  width: 62px;
-  font-weight: 600;
-  opacity: 0.9;
-}
-#event-log li .event-type { color: var(--accent); font-weight: 600; }
-#event-log li.event-DRIVER_ASSIGNED .event-type { color: var(--available); }
-#event-log li.event-NO_DRIVER_AVAILABLE .event-type,
-#event-log li.event-LOCK_FAILED .event-type { color: var(--busy); }
+#event-log li .ride-tag { font-weight: 700; }
+#event-log li .event-label { font-weight: 500; }
+#event-log li.event-DRIVER_ASSIGNED .event-label,
+#event-log li.event-RIDE_COMPLETED .event-label { color: var(--available); }
+#event-log li.event-NO_DRIVER_AVAILABLE .event-label,
+#event-log li.event-LOCK_FAILED .event-label,
+#event-log li.event-RIDE_CANCELLED .event-label { color: var(--busy); }

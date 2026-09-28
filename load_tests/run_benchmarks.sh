@@ -14,7 +14,7 @@ set -euo pipefail
 # Prerequisite: ./venv/bin/pip install -e ".[load-test]"
 #
 # See docs/plans/slice-09-load-chaos-testing.md for the full protocol and
-# README.md's "Load Testing" section for the actual recorded results.
+# docs/benchmarks.md for the actual recorded results.
 
 cd "$(dirname "$0")/.."
 
