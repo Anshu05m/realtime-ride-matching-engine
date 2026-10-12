@@ -19,7 +19,7 @@ keeping the result correct** (dispatch, inventory, ticket booking, payments). A 
 
 ## Demo
 
-🎥 [Watch the live ride-matching dashboard demo](VIDEO_LINK_HERE)
+🎥 [Watch the live ride-matching dashboard demo](https://youtu.be/HoKFBz3226k)
 
 ## Quickstart
 
